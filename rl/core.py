@@ -44,15 +44,8 @@ class Agent(object):
         self.training = False
         self.step = 0
 
-    def get_config(self):
-        """Configuration of the agent for serialization.
 
-        # Returns
-            Dictionnary with agent configuration
-        """
-        return {}
-
-    def fit(self, env, nb_steps, action_repetition=1, callbacks=None, nb_max_start_steps=0, start_step_policy=None, log_interval=10000,
+    def fit(self, env, nb_steps, action_repetition=1, nb_max_start_steps=0, start_step_policy=None, log_interval=10000,
             nb_max_episode_steps=None):
         """Trains the agent on the given environment.
 
@@ -91,26 +84,6 @@ class Agent(object):
 
         self.training = True
 
-        callbacks = [] if not callbacks else callbacks[:]
-
-        history = History()
-        callbacks += [history]
-        callbacks = CallbackList(callbacks)
-        if hasattr(callbacks, 'set_model'):
-            callbacks.set_model(self)
-        else:
-            callbacks._set_model(self)
-        callbacks._set_env(env)
-        params = {
-            'nb_steps': nb_steps,
-        }
-        if hasattr(callbacks, 'set_params'):
-            callbacks.set_params(params)
-        else:
-            callbacks._set_params(params)
-        self._on_train_begin()
-        callbacks.on_train_begin()
-
         episode = np.int16(0)
         self.step = np.int16(0)
         observation = None
@@ -120,7 +93,6 @@ class Agent(object):
         try:
             while self.step < nb_steps:
                 if observation is None:  # start of a new episode
-                    callbacks.on_episode_begin(episode)
                     episode_step = np.int16(0)
                     episode_reward = np.float32(0)
 
@@ -143,13 +115,11 @@ class Agent(object):
                             action = start_step_policy(observation)
                         if self.processor is not None:
                             action = self.processor.process_action(action)
-                        callbacks.on_action_begin(action)
                         observation, reward, done, info = env.step(action)
                         observation = deepcopy(observation)
                         if self.processor is not None:
                             observation, reward, done, info = self.processor.process_step(
                                 observation, reward, done, info)
-                        callbacks.on_action_end(action)
                         if done:
                             warnings.warn('Env ended before {} random steps could be performed at the start. You should probably lower the `nb_max_start_steps` parameter.'.format(
                                 nb_random_start_steps))
@@ -165,7 +135,6 @@ class Agent(object):
                 assert observation is not None
 
                 # Run a single step.
-                callbacks.on_step_begin(episode_step)
                 # This is were all of the work happens. We first perceive and compute the action
                 # (forward step) and then use the reward to improve (backward step).
                 action = self.forward(observation)
@@ -175,7 +144,6 @@ class Agent(object):
                 accumulated_info = {}
                 done = False
                 for _ in range(action_repetition):
-                    callbacks.on_action_begin(action)
                     observation, r, done, info = env.step(action)
                     observation = deepcopy(observation)
                     if self.processor is not None:
@@ -187,7 +155,6 @@ class Agent(object):
                         if key not in accumulated_info:
                             accumulated_info[key] = np.zeros_like(value)
                         accumulated_info[key] += value
-                    callbacks.on_action_end(action)
                     reward += r
                     if done:
                         break
@@ -205,7 +172,6 @@ class Agent(object):
                     'episode': episode,
                     'info': accumulated_info,
                 }
-                callbacks.on_step_end(episode_step, step_logs)
                 episode_step += 1
                 self.step += 1
 
@@ -224,7 +190,6 @@ class Agent(object):
                         'nb_episode_steps': episode_step,
                         'nb_steps': self.step,
                     }
-                    callbacks.on_episode_end(episode, episode_logs)
 
                     episode += 1
                     observation = None
@@ -235,10 +200,7 @@ class Agent(object):
             # This is so common that we've built this right into this function, which ensures that
             # the `on_train_end` method is properly called.
             did_abort = True
-        callbacks.on_train_end(logs={'did_abort': did_abort})
         self._on_train_end()
-
-        return history
 
     def test(self, env, nb_episodes=1, action_repetition=1, callbacks=None, visualize=True,
              nb_max_episode_steps=None, nb_max_start_steps=0, start_step_policy=None, verbose=1):
